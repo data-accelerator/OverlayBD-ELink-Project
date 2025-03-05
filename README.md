@@ -27,7 +27,7 @@ The goal of this proposal is to design a method for associating exis
 
 Seekable OCI (SOCI) optimizes the build process of stargz. Based on stargz, it can provide a Rootfs mount point for containers by simply creating an OCI image index. Essentially, it maps each file in the mount point provided by SOCI to a segment of the corresponding image layer（tar.gzip）. When people access a file in the image, the SOCI driver converts the IO request into access to a specific data segment of the original image layer.
 
-Based on this idea, the image index can be extended: when the file objects in the SOCI mount point are no longer limited to the internal index of a single image layer but can point to the entire bucket, we can achieve access to the data in the entire Bucket.
+Based on this idea, the image index can be extended: when the file objects in the SOCI mount point are no longer limited to the internal index of a single image layer but can point to the entire underlying storage, referred to here as the Bucket. With this we can achieve access to the data in the entire Bucket.
 
 Therefore, we can store a list of objects in a Bucket in the OCI registry in the form of an OCI artifact, indicating that the OCI artifact references the content of the objects in the list (similar to a soft link?). The ELink driver can provide a read-only mount point on the node side. All files in this mount point are mapped to different items in the file list. When an application accesses a file object in the ELink mount point, the IO request is redirected to the actual address of the referenced object.
 
@@ -65,7 +65,7 @@ __When ELink accesses the target referenced object, it needs to obtain
 
 ### Data Management and Garbage Collection
 
-As data continues to grow, it becomes inevitable that redundant data needs to be cleaned up. Once data is associated with OCI artifacts through a 'ReferenceList', the OCI Registry can parse the contents of the 'ReferenceList' by scanning the images. This allows the system to determine which data in the entire Bucket is being referenced and which data can be safely deleted.
+By taking advantage of the OCI format, we can leverage its inherent format for the purpose of lifecycle management. As data continues to grow it becomes inevitable that redundant data needs to be cleaned up. Once data is associated with OCI artifacts through a 'ReferenceList', the OCI Registry can help determine if an image in said 'ReferenceList' can be cleaned up by scanning the images for references. This allows the system to determine which data in the entire Bucket is being utilized and which data can be safely deleted. OCI registries will typically clean up unused layers in a similar fashion by identifying unreferenced layers during garbage collection (although this is not a hard requirement of the spec).
 
 ## Core Design Three: High-Performance Streaming Loading Capability
 
