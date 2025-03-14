@@ -20,6 +20,7 @@
 #include "photon/fs/filesystem.h"
 #include "yaml-cpp/node/node.h"
 
+#include <cerrno>
 #include <fcntl.h>
 #include <openssl/hmac.h>
 #include <openssl/md5.h>
@@ -100,13 +101,19 @@ public:
         return std::string((const char *)output, output_length);
     }
 
-    void reload_access_key(std::string_view url) {
+    int reload_access_key(std::string_view url) {
+        if (m_client == nullptr) {
+            access_key_id = "";
+            access_key_secret = "";
+            return -ENOENT;
+        }
         auto r = m_client->access_key(url);
         access_key_id = r["access_key_id"];
         access_key_secret = r["access_key_secret"];
+        return 0;
     }
 
-    virtual IFile* get_signed_object(const TargetObject &target) override {
+    virtual IFile* get_signed_object(const ELinkObject &target) override {
         char m_gmt_date[64]{};
         time_t t = photon::now / 1000 / 1000;
         struct tm *p = gmtime(&t);
@@ -115,25 +122,30 @@ public:
         std::string sig;
         /* /dadi-shared.oss-cn-beijing.aliyuncs.com/k8s.gcr.io-pause-3.5.tar.gz */
         auto data = estring().appends("GET", "\n", "\n", "\n", m_gmt_date, "\n", "/",
-                                    target.m_bucket_name, target.source, "");
+                                    target.bucket_name, target.source, "");
 
         LOG_INFO(VALUE(data));
-        if (access_key_id.empty()) {
-            reload_access_key(target.remote_url());
-        }
-        LOG_DEBUG("acess_key_id: `, access_key_secret: `", access_key_id, access_key_secret);
-        photon::net::Base64Encode(hmac_sha1(access_key_secret, data), sig);
-        LOG_INFO(VALUE(m_gmt_date));
-        auto a = estring().appends("OSS ", access_key_id, ":", sig);
-
         auto url = target.remote_url();
         auto remotefile = m_fs->open(url.c_str(), O_RDONLY);
         if (remotefile == nullptr) {
             LOG_ERRNO_RETURN(0, nullptr, "open remote file failed");
         }
-        remotefile->ioctl(HTTP_HEADER, "Date", m_gmt_date);
-        remotefile->ioctl(HTTP_HEADER, "Authorization", a.c_str());
-        LOG_DEBUG("open remote object with headers [{Date: `}, {Authorization: `}]", m_gmt_date, a);
+        if (access_key_id.empty()) {
+            reload_access_key(target.remote_url());
+        }
+        LOG_DEBUG("acess_key_id: '`', access_key_secret: '`'", access_key_id, access_key_secret);
+        if (!access_key_id.empty()){
+            photon::net::Base64Encode(hmac_sha1(access_key_secret, data), sig);
+            LOG_INFO(VALUE(m_gmt_date));
+            auto a = estring().appends("OSS ", access_key_id, ":", sig);
+
+        
+            remotefile->ioctl(HTTP_HEADER, "Date", m_gmt_date);
+            remotefile->ioctl(HTTP_HEADER, "Authorization", a.c_str());
+            LOG_DEBUG("open remote object with headers [{Date: `}, {Authorization: `}]", m_gmt_date, a);
+        } else {
+            LOG_WARN("empty accessKey get, will try to access remote object with public permission.");
+        }
         // todo ETAG check
         struct stat st;
         if (remotefile->fstat(&st) != 0) {

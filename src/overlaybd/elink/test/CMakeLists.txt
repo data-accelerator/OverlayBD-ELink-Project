@@ -4,7 +4,7 @@ link_directories($ENV{GFLAGS}/lib)
 include_directories($ENV{GTEST}/googletest/include)
 link_directories($ENV{GTEST}/lib)
 
-add_executable(elink_test test.cpp ../../../tools/sha256file.cpp)
+add_executable(elink_test test.cpp func.cpp ../../../tools/sha256file.cpp)
 target_include_directories(elink_test PUBLIC ${PHOTON_INCLUDE_DIR})
 target_link_libraries(elink_test 
     photon_static
@@ -12,6 +12,7 @@ target_link_libraries(elink_test
     gtest gtest_main gflags 
     pthread
     elink_lib
+    lsmt_lib
 )
 
 add_test(

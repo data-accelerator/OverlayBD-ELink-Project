@@ -1143,32 +1143,59 @@ public:
         if (request == GetType) {
             return LSMTReadOnlyFile::vioctl(request, args);
         }
-        if (request != RemoteData) {
-            LOG_ERROR_RETURN(EINVAL, -1, "invaid request code");
+        if (request == RemoteData) {
+            va_list tmp;
+            va_copy(tmp, args);
+            auto lba = va_arg(tmp, RemoteMapping);
+            va_end(tmp);
+            LOG_DEBUG("RemoteMapping: {offset: `, count: `, roffset: `}", lba.offset, lba.count,
+                    lba.roffset);
+            size_t nwrite = 0;
+            while (lba.count > 0) {
+                SegmentMapping m;
+                m.offset = lba.offset / ALIGNMENT;
+                m.length = (Segment::MAX_LENGTH < lba.count / ALIGNMENT ? Segment::MAX_LENGTH
+                                                                        : lba.count / ALIGNMENT);
+                m.moffset = lba.roffset / ALIGNMENT;
+                m.tag = m_rw_tag + (uint8_t)SegmentType::remoteData;
+                LOG_DEBUG("insert segment: ` into findex: `", m, m_findex);
+                static_cast<IMemoryIndex0 *>(m_index)->insert(m);
+                append_index(m);
+                nwrite += m.length * ALIGNMENT;
+                lba.offset += m.length * ALIGNMENT;
+                lba.count -= m.length * ALIGNMENT;
+                lba.roffset += m.length * ALIGNMENT;
+            }
+            return nwrite;
         }
-        va_list tmp;
-        va_copy(tmp, args);
-        auto lba = va_arg(tmp, RemoteMapping);
-        va_end(tmp);
-        LOG_DEBUG("RemoteMapping: {offset: `, count: `, roffset: `}", lba.offset, lba.count,
-                  lba.roffset);
-        size_t nwrite = 0;
-        while (lba.count > 0) {
-            SegmentMapping m;
-            m.offset = lba.offset / ALIGNMENT;
-            m.length = (Segment::MAX_LENGTH < lba.count / ALIGNMENT ? Segment::MAX_LENGTH
-                                                                    : lba.count / ALIGNMENT);
-            m.moffset = lba.roffset / ALIGNMENT;
-            m.tag = m_rw_tag + (uint8_t)SegmentType::remoteData;
-            LOG_DEBUG("insert segment: ` into findex: `", m, m_findex);
-            static_cast<IMemoryIndex0 *>(m_index)->insert(m);
-            append_index(m);
-            nwrite += m.length * ALIGNMENT;
-            lba.offset += m.length * ALIGNMENT;
-            lba.count -= m.length * ALIGNMENT;
-            lba.roffset += m.length * ALIGNMENT;
+        if (request == ELinkData) {
+            va_list tmp;
+            va_copy(tmp, args);
+            auto lba = va_arg(tmp, ELinkMapping);
+            va_end(tmp);
+            LOG_DEBUG("ELinkMapping: {offset: `, count: `, targetIDX: `, inner_offset: `}", lba.offset, lba.count,
+                    lba.ref_idx, lba.inner_offset);
+            size_t nwrite = 0;
+            while (lba.count > 0) {
+                SegmentMapping m;
+                m.offset = lba.offset / ALIGNMENT;
+                m.length = (Segment::MAX_LENGTH < lba.count / ALIGNMENT ? Segment::MAX_LENGTH
+                                                                        : lba.count / ALIGNMENT);
+                m.set_elink_offset(lba.ref_idx, lba.inner_offset / ALIGNMENT);
+                m.tag = m_rw_tag + (uint8_t)SegmentType::remoteData;
+                LOG_DEBUG("insert elink segment: ` into findex: `", m, m_findex);
+                static_cast<IMemoryIndex0 *>(m_index)->insert(m);
+                append_index(m);
+                nwrite += m.length * ALIGNMENT;
+                lba.offset += m.length * ALIGNMENT;
+                lba.count -= m.length * ALIGNMENT;
+                lba.inner_offset += m.length * ALIGNMENT;
+            }
+            return nwrite;
         }
-        return nwrite;
+        
+        LOG_ERROR_RETURN(EINVAL, -1, "invaid request code");
+
     }
 
     size_t compact(CompactOptions &opts, size_t moffset, size_t &nindex) const {
