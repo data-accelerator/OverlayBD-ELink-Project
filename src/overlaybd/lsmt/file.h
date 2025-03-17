@@ -77,8 +77,9 @@ public:
     virtual IMemoryIndex0 *index() const override = 0;
     const int Index_Group_Commit = 10;
 
-    static const int RemoteData = 11;
-
+    static const int RemoteData = 11;  // for turboOCI
+    static const int ELinkData  = 13;  // for elink reference; 12 is GetType
+    
     int set_index_group_commit(size_t buffer_size) {
         return this->ioctl(Index_Group_Commit, buffer_size);
     }

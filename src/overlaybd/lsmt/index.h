@@ -34,6 +34,7 @@ struct Segment {          // 48 + 18 == 64
     uint32_t length : 14; // length (8MB if in sector)
     const static uint64_t MAX_OFFSET = (1UL << 50) - 1;
     const static uint32_t MAX_LENGTH = (1 << 14) - 1;
+
     const static uint64_t INVALID_OFFSET = MAX_OFFSET;
     uint64_t end() const {
         return offset + length;
@@ -53,6 +54,8 @@ struct Segment {          // 48 + 18 == 64
 
 struct SegmentMapping : public Segment { // 64 + 55 + 9 == 128
     uint64_t moffset : 55;               // mapped offset (2^64 B if in sector)
+    // (512B align(9bit) + 32 bit) = 2T
+    //  24 bit = 16M items
     uint32_t zeroed : 1;                 // indicating a zero-filled segment
     uint8_t tag;
     const static uint64_t MAX_MOFFSET = (1UL << 55) - 1;
@@ -79,6 +82,19 @@ struct SegmentMapping : public Segment { // 64 + 55 + 9 == 128
         zeroed = 1;
         return *this;
     }
+
+    // ELink: get internal offset of the target object
+    off_t inner_offest() {
+        return moffset & 0xffffffff;
+    }
+    // ELink: get target idx in referenceTable
+    off_t reference_index() {
+        return moffset >> 32;
+    }
+
+    void set_elink_offset(off_t ref_idx, off_t inner_offset) {
+        moffset = (ref_idx << 32) + inner_offset;
+    }
     static SegmentMapping invalid_mapping() {
         return SegmentMapping(INVALID_OFFSET, 0, 0);
     }
@@ -88,6 +104,13 @@ struct RemoteMapping {
     off_t offset;
     uint32_t count;
     off_t roffset;
+};
+
+struct ELinkMapping {
+    off_t offset;     // Logic offset in virtual device
+    uint32_t count;
+    off_t ref_idx;        // the index of target object in ReferenceList
+    off_t inner_offset;   // inner offset in the target object
 };
 
 enum class SegmentType {
